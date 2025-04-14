@@ -77,6 +77,11 @@ export class FakeFsLocal extends FakeFs {
           sizeRaw: entry.stat.size,
         };
       } else if (entry instanceof TFolder) {
+        if (entry.path.endsWith("/")) {
+          // dirty fix of webdav crash with "405 method not allowed"
+          continue;
+        }
+
         key = `${key}/`;
         r = {
           key: key,
