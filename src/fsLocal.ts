@@ -1,10 +1,12 @@
 import { DEFAULT_DEBUG_FOLDER, type Entity } from "./baseTypes";
 import { FakeFs } from "./fsAll";
 
-import { TFile, TFolder, type Vault } from "obsidian";
+import {TAbstractFile, TFile, TFolder, type Vault} from "obsidian";
 import { mkdirpInVault, statFix, unixTimeToStr } from "./misc";
 import { listFilesInObsFolder } from "./obsFolderLister";
 import type { Profiler } from "./profiler";
+import {Queue} from "@fyears/tsqueue";
+import flatten from "lodash/flatten";
 
 export class FakeFsLocal extends FakeFs {
   vault: Vault;
@@ -41,66 +43,11 @@ export class FakeFsLocal extends FakeFs {
     this.profiler?.insert("enter walk for local");
     const local: Entity[] = [];
 
-    const localTAbstractFiles = this.vault.getAllLoadedFiles();
-    this.profiler?.insert("finish getting walk for local");
-    for (const entry of localTAbstractFiles) {
-      let r: Entity | undefined = undefined;
-      let key = entry.path;
-      if (key.startsWith("/")) {
-        // why?
-        // just remove leading slash /
-        key = key.slice(1);
-      }
-
-      if (entry.path === "/" || entry.path === "") {
-        // ignore
-        continue;
-      } else if (entry instanceof TFile) {
-        let mtimeLocal: number | undefined = entry.stat.mtime;
-        if (mtimeLocal <= 0) {
-          mtimeLocal = entry.stat.ctime;
-        }
-        if (mtimeLocal === 0) {
-          mtimeLocal = undefined;
-        }
-        if (mtimeLocal === undefined) {
-          throw Error(
-            `Your file has last modified time 0: ${key}, don't know how to deal with it`
-          );
-        }
-        r = {
-          key: key, // local always unencrypted
-          keyRaw: key,
-          mtimeCli: mtimeLocal,
-          mtimeSvr: mtimeLocal,
-          size: entry.stat.size, // local always unencrypted
-          sizeRaw: entry.stat.size,
-        };
-      } else if (entry instanceof TFolder) {
-        if (entry.path.endsWith("/")) {
-          // dirty fix of webdav crash with "405 method not allowed"
-          continue;
-        }
-
-        key = `${key}/`;
-        r = {
-          key: key,
-          keyRaw: key,
-          size: 0,
-          sizeRaw: 0,
-        };
-      } else {
-        throw Error(`unexpected ${entry}`);
-      }
-
-      if (r.keyRaw.startsWith(DEFAULT_DEBUG_FOLDER)) {
-        // skip listing the debug folder,
-        // which should always not involved in sync
-        // continue;
-      } else {
-        local.push(r);
-      }
+    for (let e of await this.getVaultEntitiesWithDotfiles()) {
+      local.push(e)
     }
+
+    this.profiler?.insert("finish getting walk for local");
 
     this.profiler?.insert("finish transforming walk for local");
 
@@ -123,6 +70,64 @@ export class FakeFsLocal extends FakeFs {
     this.profiler?.insert("finish walk for local");
     this.profiler?.removeIndent();
     return local;
+  }
+
+  async getVaultEntitiesWithDotfiles(): Promise<Entity[]> {
+    const q = new Queue(["/"])
+    let contents: Entity[] = []
+
+    while (q.size() > 0) {
+      const path2scan = q.shift() ?? ""; // never point
+
+      await this.vault.adapter.list(path2scan).then(async list => {
+        for (let folder of list.folders) {
+          if (folder == ".obsidian") {
+            continue;
+          }
+
+          const path = folder + "/"
+          const statRes = await this.vault.adapter.stat(path)
+
+          if (statRes === undefined || statRes === null) {
+            throw Error("something goes wrong while listing hidden folder");
+          }
+
+          const e = {
+            key: path,
+            keyRaw: path,
+            mtimeCli: statRes.mtime,
+            mtimeSvr: statRes.mtime,
+            size: statRes.size, // local always unencrypted
+            sizeRaw: statRes.size,
+          }
+
+          q.push(path)
+          contents.push(e)
+        }
+
+        for (let file of list.files) {
+          const path = file
+          const statRes = await this.vault.adapter.stat(path)
+
+          if (statRes === undefined || statRes === null) {
+            throw Error("something goes wrong while listing hidden folder");
+          }
+
+          const e = {
+            key: path,
+            keyRaw: path,
+            mtimeCli: statRes.mtime,
+            mtimeSvr: statRes.mtime,
+            size: statRes.size, // local always unencrypted
+            sizeRaw: statRes.size,
+          }
+
+          contents.push(e)
+        }
+      })
+    }
+
+    return contents
   }
 
   async walkPartial(): Promise<Entity[]> {

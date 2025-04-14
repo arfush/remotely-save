@@ -244,15 +244,15 @@ export const checkIsSkipItemOrNotByName = (
     }
   }
 
-  const checkIsHidden =
-    isHiddenPath(key, true, false) ||
-    (!syncUnderscoreItems && isHiddenPath(key, false, true)) ||
-    key === "/" ||
-    key === DEFAULT_FILE_NAME_FOR_METADATAONREMOTE ||
-    key === DEFAULT_FILE_NAME_FOR_METADATAONREMOTE2;
+  // const checkIsHidden =
+  //   isHiddenPath(key, true, false) ||
+  //   (!syncUnderscoreItems && isHiddenPath(key, false, true)) ||
+  //   key === "/" ||
+  //   key === DEFAULT_FILE_NAME_FOR_METADATAONREMOTE ||
+  //   key === DEFAULT_FILE_NAME_FOR_METADATAONREMOTE2;
   if (finalIsIgnored === undefined) {
-    isExplictlyIgnored = checkIsHidden;
-    finalIsIgnored = checkIsHidden;
+    isExplictlyIgnored = false;
+    finalIsIgnored = false;
   }
 
   if (finalIsIgnored === undefined) {
